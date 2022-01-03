@@ -14,9 +14,6 @@ class Encoder(tf.keras.layers.Layer):
                                               activation = 'relu'
                                               ))
             self.FC.add(tf.keras.layers.Dropout(self.dropout_rate))
-        self.FC.add(tf.keras.layers.Dense(self.dim_latent,
-                                          activation = 'linear'
-                                          ))
         self.Mean = tf.keras.layers.Dense(self.dim_latent,
                                           activation = 'linear'
                                           )
@@ -77,6 +74,7 @@ class VAE(tf.keras.models.Model):
         super(VAE, self).compile()
         self.optimizer = optimizer
 
+    @tf.function
     def train_step(self, X):
         with tf.GradientTape() as tape:
             mean, logvar = self.Encoder(X)
@@ -94,6 +92,7 @@ class VAE(tf.keras.models.Model):
 
         return {'reconstruction_loss' : reconstruction_loss, 'kl_loss' : kl_loss}
 
+    @tf.function
     def test_step(self, X):
         mean, logvar = self.Encoder(X)
         latent = self.reparameteriation(mean, logvar)
