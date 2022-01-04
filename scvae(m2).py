@@ -1,27 +1,5 @@
 import tensorflow as tf
 
-class AuxClassifier(tf.keras.layers.Layer):
-    def __init__(self, n_layers, n_nodes, dropout_rate, n_categories):
-        super(AuxClassifier, self).__init__()
-        self.n_layers = n_layers
-        self.n_nodes = n_nodes
-        self.dropout_rate = dropout_rate
-        self.n_categories = n_categories
-
-        self.FC =  tf.keras.Sequential()
-        for i in range(self.n_layers):
-            self.FC.add(tf.keras.layers.Dense(self.n_nodes,
-                                              activation = 'relu',
-                                              kernel_initializer = 'he_normal'
-                                              ))
-            self.FC.add(tf.keras.layers.Dropout(self.dropout_rate))
-        self.FC.add(tf.keras.layers.Dense(self.n_categories,
-                                          activation = 'softmax'
-                                          ))
-
-    def call(self, X):
-        return self.FC(X)
-
 class Encoder(tf.keras.layers.Layer):
     def __init__(self, n_layers, n_nodes, latent_dims, dropout_rate):
         super(Encoder, self).__init__()
@@ -73,17 +51,15 @@ class Decoder(tf.keras.layers.Layer):
         reconstruction = self.FC(tf.concat([latent, y], axis = -1))
         return reconstruction
 
-class CVAE(tf.keras.models.Model):
-    def __init__(self, n_layers = 2, n_nodes = 500, dropout_rate = .15, latent_dim = 2, output_dim = 784, n_categories = 10):
-        super(CVAE, self).__init__()
+class SCVAE(tf.keras.models.Model):
+    def __init__(self, n_layers = 2, n_nodes = 500, dropout_rate = .15, latent_dim = 2, output_dim = 784):
+        super(SCVAE, self).__init__()
         self.n_layers = n_layers
         self.n_nodes = n_nodes
         self.dropout_rate = dropout_rate
         self.latent_dim = latent_dim
         self.output_dim = output_dim
-        self.n_categories = n_categories
 
-        self.AuxClassifier = AuxClassifier(self.n_layers, self.n_nodes, self.dropout_rate, self.n_categories)
         self.Encoder = Encoder(self.n_layers, self.n_nodes, self.latent_dim, self.dropout_rate)
         self.Decoder = Decoder(self.n_layers, self.n_nodes, self.dropout_rate, self.output_dim)
 
@@ -95,13 +71,14 @@ class CVAE(tf.keras.models.Model):
         return (epsilon * tf.exp(.5 * logvar)) + mean
 
     def compile(self, optimizer):
-        super(CVAE, self).compile()
+        super(SCVAE, self).compile()
         self.optimizer = optimizer
 
     @tf.function
-    def train_step(self, X):
+    def train_step(self, Input):
+        X, y = Input
+
         with tf.GradientTape() as tape:
-            y = self.AuxClassifier(X)
             mean, logvar = self.Encoder(X, y)
             latent = self.reparameteriation(mean, logvar)
             reconstuction = self.Decoder(latent, y)
@@ -118,8 +95,8 @@ class CVAE(tf.keras.models.Model):
         return {'reconstruction_loss' : reconstruction_loss, 'kl_loss' : kl_loss}
 
     @tf.function
-    def test_step(self, X):
-        y = self.AuxClassifier(X)
+    def test_step(self, Input):
+        X, y = Input
         mean, logvar = self.Encoder(X, y)
         latent = self.reparameteriation(mean, logvar)
         reconstuction = self.Decoder(latent, y)
