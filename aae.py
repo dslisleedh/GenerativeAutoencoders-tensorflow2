@@ -19,12 +19,12 @@ class Encoder(tf.keras.layers.Layer):
             self.InputNoise = tf.keras.layers.Dropout(rate = noise_rate)
         else:
             self.InputNoise = tf.keras.layers.Layer()
-        self.FC = tf.keras.Sequential([
-            tf.keras.layers.Dense(self.n_nodes,
-                                  activation = 'relu',
-                                  kernel_initializer = tf.keras.initializers.random_normal(stddev = .01)
-                                  ) for _ in range(self.n_layers)
-        ])
+        self.FC = tf.keras.Sequential()
+        for i in range(self.n_layers):
+            self.FC.add(tf.keras.layers.Dense(self.n_nodes,
+                                              kernel_initializer = tf.keras.initializers.random_normal(stddev = .01)
+                                              )),
+            self.FC.add(tf.keras.layers.LeakyReLU(.15))
         self.FC.add(tf.keras.layers.Dense(self.latent_dims,
                                           activation = 'linear',
                                           kernel_initializer = tf.keras.initializers.random_normal(stddev = .01)
@@ -44,12 +44,12 @@ class Decoder(tf.keras.layers.Layer):
         self.n_nodes = n_nodes
         self.output_dims = output_dims
 
-        self.FC = tf.keras.Sequential([
-            tf.keras.layers.Dense(self.n_nodes,
-                                  activation = 'relu',
-                                  kernel_initializer = tf.keras.initializers.random_normal(stddev = .01)
-                                  ) for _ in range(self.n_layers)
-        ])
+        self.FC = tf.keras.Sequential()
+        for i in range(self.n_layers):
+            self.FC.add(tf.keras.layers.Dense(self.n_nodes,
+                                              kernel_initializer=tf.keras.initializers.random_normal(stddev=.01)
+                                              )),
+            self.FC.add(tf.keras.layers.LeakyReLU(.15))
         self.FC.add(tf.keras.layers.Dense(output_dims,
                                           activation = 'sigmoid'
                                           ))
@@ -64,12 +64,12 @@ class Discriminator(tf.keras.layers.Layer):
         self.n_layers = n_layers
         self.n_nodes = n_nodes
 
-        self.FC = tf.keras.Sequential([
-            tf.keras.layers.Dense(self.n_nodes,
-                                  activation = 'relu',
-                                  kernel_initializer = tf.keras.initializers.random_normal(stddev = .01)
-                                  )
-        ])
+        self.FC = tf.keras.Sequential()
+        for i in range(self.n_layers):
+            self.FC.add(tf.keras.layers.Dense(self.n_nodes,
+                                              kernel_initializer=tf.keras.initializers.random_normal(stddev=.01)
+                                              ))
+            self.FC.add(tf.keras.layers.LeakyReLU(.15))
         self.FC.add(tf.keras.layers.Dense(1,
                                           activation = 'sigmoid'
                                           )
@@ -81,6 +81,9 @@ class Discriminator(tf.keras.layers.Layer):
 
 
 class AAE(tf.keras.models.Model):
+    '''
+    original paper uses ReLU but i used leakyReLU for better result
+    '''
     def __init__(self,
                  prior,
                  n_layers = 2,
@@ -91,6 +94,7 @@ class AAE(tf.keras.models.Model):
                  noise_rate = .2):
         super(AAE, self).__init__()
         self.prior = prior
+        self.G_repeat = 1 if self.prior == 'normal' else 2
         self.n_layers = n_layers
         self.n_nodes = n_nodes
         self.latent_dims = latent_dims
@@ -118,7 +122,7 @@ class AAE(tf.keras.models.Model):
             reconstruction = self.Decoder(latent)
             R_loss = tf.reduce_mean(
                 tf.keras.losses.mse(X, reconstruction)
-            ) * self.output_dims
+            ) / 2
         grads = tape.gradient(R_loss,
                               self.Encoder.trainable_variables + self.Decoder.trainable_variables
                               )
@@ -150,17 +154,18 @@ class AAE(tf.keras.models.Model):
         )
 
         #3 Generator
-        with tf.GradientTape() as tape:
-            latent = self.Encoder(X)
-            G_output = self.Discriminator(latent)
-            G_loss = tf.reduce_mean(
-                tf.keras.losses.binary_crossentropy(tf.zeros(shape = tf.shape(G_output)), G_output)
-            )
-        grads = tape.gradients(G_loss,
-                              self.Encoder.trainable_variables)
-        self.g_optimizer.apply_gradient(
-            zip(grads,
-                self.Encoder.trainable_variables
+        for _ in range(self.G_repeat):
+            with tf.GradientTape() as tape:
+                latent = self.Encoder(X)
+                G_output = self.Discriminator(latent)
+                G_loss = tf.reduce_mean(
+                    tf.keras.losses.binary_crossentropy(tf.zeros(shape = tf.shape(G_output)), G_output)
                 )
-        )
+            grads = tape.gradient(G_loss,
+                                  self.Encoder.trainable_variables)
+            self.g_optimizer.apply_gradients(
+                zip(grads,
+                    self.Encoder.trainable_variables
+                    )
+            )
         return {'reconstruction_loss' : R_loss, 'discrimination_loss' : D_loss, 'generation_loss' : G_loss}
