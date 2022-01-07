@@ -19,8 +19,8 @@ class Encoder(tf.keras.layers.Layer):
                                                          )
                                   )
             self.Downsampling.add(tf.keras.layers.BatchNormalization())
-            self.Downsampling.add(tf.keras.layers.LeakyReLU())
-        self.Downsampling.add(tf.keras.layers.GlobalAveragePooling2D())
+            self.Downsampling.add(tf.keras.layers.LeakyReLU(.15))
+        self.Downsampling.add( tf.keras.layers.Flatten())
         self.Mean = tf.keras.layers.Dense(self.dim_latent,
                                           activation='linear'
                                           )
@@ -52,7 +52,7 @@ class Decoder(tf.keras.layers.Layer):
                                                              interpolation='nearest'
                                                              )
                                 )
-            self.Upsampling.add(tf.keras.layers.Conv2D(self.n_nodes / (2 ** i),
+            self.Upsampling.add(tf.keras.layers.Conv2D(self.n_filters / (2 ** i),
                                                        kernel_size=(3, 3),
                                                        activation='linear',
                                                        use_bias=False,
@@ -60,7 +60,7 @@ class Decoder(tf.keras.layers.Layer):
                                                        )
                                 )
             self.Upsampling.add(tf.keras.layers.BatchNormalization())
-            self.Upsampling.add(tf.keras.layers.LeakyReLU())
+            self.Upsampling.add(tf.keras.layers.LeakyReLU(.15))
         self.Upsampling.add(tf.keras.layers.UpSampling2D(size=(2, 2),
                                                          interpolation='nearest'
                                                          )
@@ -86,7 +86,10 @@ class DFCVAE(tf.keras.models.Model):
                  E_layers=4,
                  D_filters=128,
                  D_layers=4,
-                 dim_latent=100):
+                 dim_latent=100,
+                 alpha = 1.,
+                 beta = .5
+                 ):
         super(DFCVAE, self).__init__()
         self.n_nodes = n_nodes
         self.E_filters = E_filters
@@ -94,14 +97,16 @@ class DFCVAE(tf.keras.models.Model):
         self.D_filters = D_filters
         self.D_layers = D_layers
         self.dim_latent = dim_latent
+        self.alpha =  alpha
+        self.beta = beta
 
         self.vgg = tf.keras.applications.vgg19.VGG19(include_top=False)
         self.DFCModel = tf.keras.Model(inputs=self.vgg.input,
-                                       outputs=[self.vgg.layers[6].output,
-                                                self.vgg.layers[11].output,
-                                                self.vgg.layers[16].output,
-                                                self.vgg.layers[21].output]
+                                       outputs=[self.vgg.layers[1].output,
+                                                self.vgg.layers[4].output,
+                                                self.vgg.layers[7].output]
                                        )
+        self.DFCModel.build(input_shape = (None, 64, 64, 3))
         self.Encoder = Encoder(self.E_filters, self.E_layers, self.dim_latent)
         self.Decoder = Decoder(self.n_nodes, self.D_filters, self.D_layers)
 
@@ -118,7 +123,7 @@ class DFCVAE(tf.keras.models.Model):
         recon_output = self.DFCModel(reconstruction)
         loss = 0
         for x_, recon_ in zip(X_output, recon_output):
-            loss += tf.reduce_mean(tf.square(x_ - recon_)) / 2
+            loss += tf.reduce_mean(tf.losses.mse(x_, recon_))
         return loss
 
     def compile(self, optimizer):
@@ -132,9 +137,8 @@ class DFCVAE(tf.keras.models.Model):
             mean, logvar = self.Encoder(X)
             latent = self.reparameterization(mean, logvar)
             reconstuction = self.Decoder(latent)
-            reconstruction_loss = tf.reduce_mean(self.compute_DFC(X, reconstuction))
-            kl_loss = tf.reduce_mean(
-                -.5 * tf.reduce_sum((1 + logvar - tf.square(mean) - tf.exp(logvar + 1e-8)), axis=1))
+            reconstruction_loss = self.beta * self.compute_DFC(X, reconstuction) * 64
+            kl_loss = self.alpha * tf.reduce_mean(-0.5 * tf.reduce_sum(1 + logvar - tf.square(mean) - tf.exp(logvar + 1e-7),axis = 1))
             ELBO = reconstruction_loss + kl_loss
         grads = tape.gradient(ELBO, self.Encoder.trainable_variables + self.Decoder.trainable_variables)
         self.optimizer.apply_gradients(
