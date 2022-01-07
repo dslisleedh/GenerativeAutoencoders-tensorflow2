@@ -1,104 +1,153 @@
 import tensorflow as tf
 
-class Encoder(tf.keras.layers.Layer):
-    def __init__(self, n_layers, n_nodes, dim_latent, dropout_rate):
-        super(Encoder, self).__init__()
-        self.n_layers = n_layers
-        self.n_nodes = n_nodes
-        self.dim_latent = dim_latent
-        self.dropout_rate = dropout_rate
 
-        self.FC = tf.keras.Sequential()
+class Encoder(tf.keras.layers.Layer):
+    def __init__(self, n_filters, n_layers, dim_latent):
+        super(Encoder, self).__init__()
+        self.n_filters = n_filters
+        self.n_layers = n_layers
+        self.dim_latent = dim_latent
+
+        self.Downsampling = tf.keras.Sequential()
         for i in range(self.n_layers):
-            self.FC.add(tf.keras.layers.Dense(self.n_nodes,
-                                              activation = 'relu'
-                                              ))
-            self.FC.add(tf.keras.layers.Dropout(self.dropout_rate))
+            self.Downsampling.add(tf.keras.layers.Conv2D(self.n_filters * (2 ** i),
+                                                         kernel_size=(4, 4),
+                                                         strides=(2, 2),
+                                                         padding='same',
+                                                         activation='linear',
+                                                         use_bias=False
+                                                         )
+                                  )
+            self.Downsampling.add(tf.keras.layers.BatchNormalization())
+            self.Downsampling.add(tf.keras.layers.LeakyReLU(.15))
+        self.Downsampling.add( tf.keras.layers.Flatten())
         self.Mean = tf.keras.layers.Dense(self.dim_latent,
-                                          activation = 'linear'
+                                          activation='linear'
                                           )
         self.LogVar = tf.keras.layers.Dense(self.dim_latent,
-                                            activation = 'linear'
+                                            activation='linear'
                                             )
 
     def call(self, X):
-        X = self.FC(X)
+        X = self.Downsampling(X)
         mean = self.Mean(X)
         logvar = self.LogVar(X)
         return mean, logvar
 
 
 class Decoder(tf.keras.layers.Layer):
-    def __init__(self, n_layers, n_nodes, dropout_rate, output_dim):
+    def __init__(self, n_nodes, n_filters, n_layers):
         super(Decoder, self).__init__()
-        self.n_layers = n_layers
         self.n_nodes = n_nodes
-        self.dropout_rate = dropout_rate
-        self.output_dim = output_dim
+        self.n_filters = n_filters
+        self.n_layers = n_layers
 
-        self.FC = tf.keras.Sequential()
-        for i in range(self.n_layers):
-            self.FC.add(tf.keras.layers.Dense(self.n_nodes,
-                                              activation = 'relu',
-                                              kernel_initializer = 'he_normal'
-                                              ))
-            self.FC.add(tf.keras.layers.Dropout(self.dropout_rate))
-        self.FC.add(tf.keras.layers.Dense(self.output_dim,
-                                          activation = 'sigmoid'
-                                          ))
+        self.FC = tf.keras.layers.Dense(self.n_nodes,
+                                        activation='relu',
+                                        kernel_initializer='he_normal'
+                                        )
+        self.Upsampling = tf.keras.Sequential()
+        for i in range(self.n_layers - 1):
+            self.Upsampling.add(tf.keras.layers.UpSampling2D(size=(2, 2),
+                                                             interpolation='nearest'
+                                                             )
+                                )
+            self.Upsampling.add(tf.keras.layers.Conv2D(self.n_filters / (2 ** i),
+                                                       kernel_size=(3, 3),
+                                                       activation='linear',
+                                                       use_bias=False,
+                                                       padding='same'
+                                                       )
+                                )
+            self.Upsampling.add(tf.keras.layers.BatchNormalization())
+            self.Upsampling.add(tf.keras.layers.LeakyReLU(.15))
+        self.Upsampling.add(tf.keras.layers.UpSampling2D(size=(2, 2),
+                                                         interpolation='nearest'
+                                                         )
+                            )
+        self.Upsampling.add(tf.keras.layers.Conv2D(3,
+                                                   kernel_size=(3, 3),
+                                                   padding='same',
+                                                   activation='sigmoid'
+                                                   )
+                            )
 
     def call(self, latent):
-        reconstruction = self.FC(latent)
+        latent = self.FC(latent)
+        latent = tf.reshape(latent, shape=(-1, 4, 4, 256))
+        reconstruction = self.Upsampling(latent)
         return reconstruction
 
-class VAE(tf.keras.models.Model):
-    def __init__(self, n_layers = 2, n_nodes = 500, dropout_rate = .15, latent_dim = 2, output_dim = 784):
-        super(VAE, self).__init__()
-        self.n_layers = n_layers
-        self.n_nodes = n_nodes
-        self.dropout_rate = dropout_rate
-        self.latent_dim = latent_dim
-        self.output_dim = output_dim
 
-        self.Encoder = Encoder(self.n_layers, self.n_nodes, self.latent_dim, self.dropout_rate)
-        self.Decoder = Decoder(self.n_layers, self.n_nodes, self.dropout_rate, self.output_dim)
+class DFCVAE(tf.keras.models.Model):
+    def __init__(self,
+                 n_nodes=4096,
+                 E_filters=32,
+                 E_layers=4,
+                 D_filters=128,
+                 D_layers=4,
+                 dim_latent=100,
+                 alpha = 1.,
+                 beta = .5
+                 ):
+        super(DFCVAE, self).__init__()
+        self.n_nodes = n_nodes
+        self.E_filters = E_filters
+        self.E_layers = E_layers
+        self.D_filters = D_filters
+        self.D_layers = D_layers
+        self.dim_latent = dim_latent
+        self.alpha =  alpha
+        self.beta = beta
+
+        self.vgg = tf.keras.applications.vgg19.VGG19(include_top=False)
+        self.DFCModel = tf.keras.Model(inputs=self.vgg.input,
+                                       outputs=[self.vgg.layers[1].output,
+                                                self.vgg.layers[4].output,
+                                                self.vgg.layers[7].output]
+                                       )
+        self.DFCModel.build(input_shape = (None, 64, 64, 3))
+        self.Encoder = Encoder(self.E_filters, self.E_layers, self.dim_latent)
+        self.Decoder = Decoder(self.n_nodes, self.D_filters, self.D_layers)
 
     @tf.function
-    def reparameteriation(self, mean, logvar):
-        epsilon = tf.random.normal(shape = tf.shape(mean),
-                                   dtype = 'float32'
+    def reparameterization(self, mean, logvar):
+        epsilon = tf.random.normal(shape=tf.shape(mean),
+                                   dtype='float32'
                                    )
         return (epsilon * tf.exp(.5 * logvar)) + mean
 
+    @tf.function
+    def compute_DFC(self, X, reconstruction):
+        X_output = self.DFCModel(X)
+        recon_output = self.DFCModel(reconstruction)
+        loss = 0
+        for x_, recon_ in zip(X_output, recon_output):
+            loss += tf.reduce_mean(tf.losses.mse(x_, recon_))
+        return loss
+
     def compile(self, optimizer):
-        super(VAE, self).compile()
+        super(DFCVAE, self).compile()
         self.optimizer = optimizer
 
     @tf.function
-    def train_step(self, X):
+    def train_step(self, Input):
+        X, _ = Input
         with tf.GradientTape() as tape:
             mean, logvar = self.Encoder(X)
-            latent = self.reparameteriation(mean, logvar)
+            latent = self.reparameterization(mean, logvar)
             reconstuction = self.Decoder(latent)
-            reconstruction_loss = tf.reduce_mean(
-                    tf.keras.losses.binary_crossentropy(X, reconstuction)
-            ) * 28 * 28
-            kl_loss = tf.reduce_mean(-.5 * tf.reduce_sum((1 + logvar - tf.square(mean) - tf.exp(logvar + 1e-8)), axis = 1))
+            reconstruction_loss = self.beta * self.compute_DFC(X, reconstuction) * 64
+            kl_loss = self.alpha * tf.reduce_mean(-0.5 * tf.reduce_sum(1 + logvar - tf.square(mean) - tf.exp(logvar + 1e-7),axis = 1))
             ELBO = reconstruction_loss + kl_loss
         grads = tape.gradient(ELBO, self.Encoder.trainable_variables + self.Decoder.trainable_variables)
         self.optimizer.apply_gradients(
             zip(grads, self.Encoder.trainable_variables + self.Decoder.trainable_variables)
         )
+        return {'reconstruction_loss': reconstruction_loss, 'kl_loss': kl_loss}
 
-        return {'reconstruction_loss' : reconstruction_loss, 'kl_loss' : kl_loss}
-
-    @tf.function
-    def test_step(self, X):
+    def call(self, X):
         mean, logvar = self.Encoder(X)
-        latent = self.reparameteriation(mean, logvar)
+        latent = self.reparameterization(mean, logvar)
         reconstuction = self.Decoder(latent)
-        reconstruction_loss = tf.reduce_mean(
-            tf.keras.losses.binary_crossentropy(X, reconstuction)
-        ) * 28 * 28
-        kl_loss = tf.reduce_mean(-.5 * tf.reduce_sum((1 + logvar - tf.square(mean) - tf.exp(logvar + 1e-8)), axis=1))
-        return {'reconstruction_loss' : reconstruction_loss, 'kl_loss' : kl_loss}
+        return reconstuction
