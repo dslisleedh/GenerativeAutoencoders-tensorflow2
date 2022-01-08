@@ -1,4 +1,4 @@
-<h1>Generative Autoencoder 모델들을 구현해봄.</h1>
+<h1>Generative Autoencoder</h1>
 
 ## DFCVAE [[Code]](https://github.com/dslisleedh/GenerativeAutoencoders-tensorflow2/blob/main/dfcvae.py) [[Paper(arXiv)]](https://arxiv.org/abs/1610.00291)  
 
