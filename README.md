@@ -1,5 +1,15 @@
 <h1>Generative Autoencoder</h1>
 
+## Label 포함여부 차이  
+
+VAE에서 Label을 encoder와 decoder에 포함하여 넣어주면 좀 더 빨리 수렴함.  
+
+|Epochs|VAE|Supervised Conditional VAE|
+|--|--|--|
+|1|![VAE](https://github.com/dslisleedh/GenerativeAutoencoders-tensorflow2/blob/main/imgs/VAE_MNIST_1epoch.png)|![SCVAE](https://github.com/dslisleedh/GenerativeAutoencoders-tensorflow2/blob/main/imgs/SCVAE_MNIST_1epoch.png)|
+|5|![VAE](https://github.com/dslisleedh/GenerativeAutoencoders-tensorflow2/blob/main/imgs/VAE_MNIST_5epoch.png)|![SCVAE](https://github.com/dslisleedh/GenerativeAutoencoders-tensorflow2/blob/main/imgs/SCVAE_MNIST_5epoch.png)|
+|10|![VAE](https://github.com/dslisleedh/GenerativeAutoencoders-tensorflow2/blob/main/imgs/VAE_MNIST_10epoch.png)|![SCVAE](https://github.com/dslisleedh/GenerativeAutoencoders-tensorflow2/blob/main/imgs/SCVAE_MNIST_10epoch.png)|
+
 ## DFCVAE [[Code]](https://github.com/dslisleedh/GenerativeAutoencoders-tensorflow2/blob/main/dfcvae.py) [[Paper(arXiv)]](https://arxiv.org/abs/1610.00291)  
 
 특징 : VAE는 Pixel-wise loss를 쓰기에 blurry함. 그래서 Pixel별로 reconstruction loss를 계산하는 대신 X와 Recon.을 CNN에 태운 다음 그 값을 비교해서 reconstruction loss 계산.  
