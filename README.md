@@ -18,7 +18,7 @@ M2는 X로 y를 예측하는 분류기를 추가한 것이고, M3는 훈련된 M
 |--|--|
 |![M2](https://github.com/dslisleedh/GenerativeAutoencoders-tensorflow2/blob/main/imgs/CVAEM2_MNIST.png)|![M3](https://github.com/dslisleedh/GenerativeAutoencoders-tensorflow2/blob/main/imgs/CVAEM3_MNIST.png)|
 
-M2는 400 epochs, M3는 M1은 200 epochs 훈련하고 분류기를 추가한 뒤 200 epochs 더 훈련했음. 보이는 것 처럼 M3가 reconstruction을 좀 더 컨트롤하기 쉽게 잘 나눠진 것을 볼 수 있음.  
+M2는 400 epochs, M3는 M1은 200 epochs 훈련하고 분류기를 추가한 뒤 200 epochs 더 훈련했음. y의 차원은 MNIST의 Category와 동일하게 10개로 설정했으며 **각 row가 1개의 category를 나타냄.** 보이는 것 처럼 M3가 reconstruction을 좀 더 컨트롤하기 쉽게 잘 나눠진 것을 볼 수 있음. M2는 분리는 되어있는데 reconstruction이 잘 안됨. 하지만 M3도 Unsupervised로 분류했기에 원래 의도한 것 처럼 완벽하게 분리되지 않음.  
 
 ## DFCVAE [[Code]](https://github.com/dslisleedh/GenerativeAutoencoders-tensorflow2/blob/main/dfcvae.py) [[Paper(arXiv)]](https://arxiv.org/abs/1610.00291)  
 
