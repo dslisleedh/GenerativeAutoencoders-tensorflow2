@@ -94,7 +94,6 @@ class AAE(tf.keras.models.Model):
                  noise_rate = .2):
         super(AAE, self).__init__()
         self.prior = prior
-        self.G_repeat = 1 if self.prior == 'normal' else 2
         self.n_layers = n_layers
         self.n_nodes = n_nodes
         self.latent_dims = latent_dims
@@ -154,18 +153,17 @@ class AAE(tf.keras.models.Model):
         )
 
         #3 Generator
-        for _ in range(self.G_repeat):
-            with tf.GradientTape() as tape:
-                latent = self.Encoder(X)
-                G_output = self.Discriminator(latent)
-                G_loss = tf.reduce_mean(
-                    tf.keras.losses.binary_crossentropy(tf.zeros(shape = tf.shape(G_output)), G_output)
-                )
-            grads = tape.gradient(G_loss,
-                                  self.Encoder.trainable_variables)
-            self.g_optimizer.apply_gradients(
-                zip(grads,
-                    self.Encoder.trainable_variables
-                    )
+        with tf.GradientTape() as tape:
+            latent = self.Encoder(X)
+            G_output = self.Discriminator(latent)
+            G_loss = tf.reduce_mean(
+                tf.keras.losses.binary_crossentropy(tf.zeros(shape = tf.shape(G_output)), G_output)
             )
+        grads = tape.gradient(G_loss,
+                              self.Encoder.trainable_variables)
+        self.g_optimizer.apply_gradients(
+            zip(grads,
+                self.Encoder.trainable_variables
+                )
+        )
         return {'reconstruction_loss' : R_loss, 'discrimination_loss' : D_loss, 'generation_loss' : G_loss}
