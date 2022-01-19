@@ -117,8 +117,8 @@ class AAE(tf.keras.models.Model):
 
         #1 Reconstruction
         with tf.GradientTape() as tape:
-            latent = self.Encoder(X)
-            reconstruction = self.Decoder(latent)
+            latent = self.Encoder(X, training=True)
+            reconstruction = self.Decoder(latent, training=True)
             R_loss = tf.reduce_mean(
                 tf.keras.losses.mse(X, reconstruction)
             ) / 2
@@ -131,11 +131,11 @@ class AAE(tf.keras.models.Model):
         )
 
         #2 Discriminator
-        latent = self.Encoder(X)
+        latent = self.Encoder(X, training=True)
         prior = self.prior_generator.get_samples(n_samples = tf.shape(X)[0], dim_latent = self.latent_dims)
         with tf.GradientTape() as tape:
-            Output_fake = self.Discriminator(latent)
-            Output_true = self.Discriminator(prior)
+            Output_fake = self.Discriminator(latent, training=True)
+            Output_true = self.Discriminator(prior, training=True)
             F_loss = tf.reduce_mean(
                 tf.keras.losses.binary_crossentropy(tf.ones(shape = tf.shape(Output_fake)), Output_fake)
             )
@@ -154,8 +154,8 @@ class AAE(tf.keras.models.Model):
 
         #3 Generator
         with tf.GradientTape() as tape:
-            latent = self.Encoder(X)
-            G_output = self.Discriminator(latent)
+            latent = self.Encoder(X, training=True)
+            G_output = self.Discriminator(latent, training=True)
             G_loss = tf.reduce_mean(
                 tf.keras.losses.binary_crossentropy(tf.zeros(shape = tf.shape(G_output)), G_output)
             )
